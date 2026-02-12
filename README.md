@@ -1,73 +1,142 @@
-# Welcome to your Lovable project
+# Rhythm Remote Pad
 
-## Project info
+A mobile web app controller for the Roku Osu Mania rhythm game. This app allows you to use your phone as a controller instead of the Roku remote during gameplay.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Features
 
-## How can I edit this code?
+- 4 touch-responsive lane buttons in landscape mode
+- Support for both tap and long-press (for hold notes)
+- Direct communication with Roku via ECP (External Control Protocol)
+- Works on any device with a modern web browser
+- Roku remote still works for testing
 
-There are several ways of editing your application.
+## Prerequisites
 
-**Use Lovable**
+- Node.js (v18+) installed on your computer
+- npm (comes with Node.js)
+- Your phone and computer must be on the same WiFi network
+- Your Roku device must be on the same WiFi network
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Quick Start
 
-Changes made via Lovable will be committed automatically to this repo.
+### 1. Install Dependencies
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```bash
+cd tools/rhythm-remote-pad
+npm install --legacy-peer-deps
 ```
 
-**Edit a file directly in GitHub**
+### 2. Start the Development Server
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+npm run dev -- --host
+```
 
-**Use GitHub Codespaces**
+This will show output like:
+```
+VITE v5.4.19  ready in 196 ms
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+➜  Local:   http://localhost:8080/
+➜  Network: http://192.168.x.x:8080/
+```
 
-## What technologies are used for this project?
+### 3. Open on Your Phone
 
-This project is built with:
+**Option A: Scan QR Code**
+```bash
+open qr-code.html
+```
+Scan the QR code with your phone's camera.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+**Option B: Type URL**
+Open your phone's browser and go to `http://[your-computer-ip]:8080/`
 
-## How can I deploy this project?
+### 4. Enter Your Roku IP
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+When the app opens:
+1. Go to your Roku: **Settings → Network → About**
+2. Find your Roku's IP address (e.g., `192.168.1.50`)
+3. Enter it in the app and tap **Connect**
 
-## Can I connect a custom domain to my Lovable project?
+### 5. Play!
 
-Yes, you can!
+1. Start the Roku Osu Mania game on your TV
+2. Navigate to a song and start playing
+3. Use your phone to tap the lane buttons during gameplay
+4. The Roku remote still works too!
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## How It Works
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+The app sends key presses directly to your Roku using the **External Control Protocol (ECP)**:
+
+| Phone Button | Roku Key | Game Lane |
+|--------------|----------|-----------|
+| Button 1     | Left     | Lane 1    |
+| Button 2     | Up       | Lane 2    |
+| Button 3     | Down     | Lane 3    |
+| Button 4     | Right    | Lane 4    |
+
+This is the same protocol the official Roku mobile app uses!
+
+## Firewall Setup (if connection fails)
+
+If your phone can't connect to the dev server:
+
+**macOS:**
+1. Open **System Settings** → **Privacy & Security** → **Firewall**
+2. Click **Firewall Options**
+3. Click **+** and navigate to `/usr/local/bin/node`
+4. Set to **Allow incoming connections**
+5. Click **OK**
+
+If your phone can't connect to the Roku:
+- Make sure all devices are on the same WiFi network
+- Check that "Network Access" is enabled on your Roku
+
+## Building for Production
+
+```bash
+npm run build
+```
+
+The built files will be in the `dist/` folder.
+
+## Hosting Online
+
+To host the app for easier access:
+
+1. **Vercel** (recommended): Connect your repo and deploy
+2. **Netlify**: Drag and drop the `dist/` folder
+3. **GitHub Pages**: Push `dist/` to gh-pages branch
+
+## Development Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server (localhost only) |
+| `npm run dev -- --host` | Start dev server (network accessible) |
+| `npm run build` | Build for production |
+| `npm run preview` | Preview production build |
+| `npm test` | Run tests |
+
+## Troubleshooting
+
+### "Safari can't connect to the server"
+- Ensure phone and computer are on the same WiFi
+- Check that the dev server is running
+- Add Node.js to firewall exceptions
+
+### Button presses not working on Roku
+- Verify the Roku IP is correct
+- Make sure the game is in gameplay mode (not paused/menu)
+- Check browser console for errors
+- Ensure Roku is on the same WiFi network
+
+### High latency / delayed inputs
+- Move phone closer to WiFi router
+- Close other apps on your phone
+- Use 5GHz WiFi if available
+
+## License
+
+Part of the Roku Osu Mania project.
