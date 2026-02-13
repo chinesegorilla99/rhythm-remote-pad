@@ -37,9 +37,9 @@ interface UseRokuSocketReturn {
 }
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
-const INITIAL_RECONNECT_DELAY = 500;   // Start reconnect attempts at 500ms
-const MAX_RECONNECT_DELAY = 5000;      // Cap at 5 seconds
-const RECONNECT_BACKOFF = 1.5;         // Multiply delay by this each attempt
+const INITIAL_RECONNECT_DELAY = 1000;  // Start reconnect attempts at 1s
+const MAX_RECONNECT_DELAY = 10000;     // Cap at 10 seconds
+const RECONNECT_BACKOFF = 2;           // Double delay each attempt
 
 // ─── HOOK ───────────────────────────────────────────────────────────────────
 export function useRokuSocket({
@@ -53,36 +53,62 @@ export function useRokuSocket({
   const reconnectDelay = useRef(INITIAL_RECONNECT_DELAY);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intentionalClose = useRef(false);
+  const connectingRef = useRef(false);
+
+  // Store callbacks and props in refs so they never trigger re-renders/reconnects
   const currentRokuIp = useRef(rokuIp);
+  const onStatusChangeRef = useRef(onStatusChange);
+  const onErrorRef = useRef(onError);
+  const serverUrlRef = useRef(serverUrl);
 
-  // Keep the ref in sync with the prop
   currentRokuIp.current = rokuIp;
+  onStatusChangeRef.current = onStatusChange;
+  onErrorRef.current = onError;
+  serverUrlRef.current = serverUrl;
 
-  const updateStatus = useCallback(
-    (newStatus: ConnectionStatus) => {
-      setStatus(newStatus);
-      onStatusChange?.(newStatus);
-    },
-    [onStatusChange]
-  );
+  const updateStatus = useCallback((newStatus: ConnectionStatus) => {
+    setStatus(newStatus);
+    onStatusChangeRef.current?.(newStatus);
+  }, []); // Stable — never changes
 
   // ── Connect to the relay server ────────────────────────────────────────
   const connect = useCallback(() => {
+    const url = serverUrlRef.current;
+
+    // Prevent double-connect
+    if (connectingRef.current) {
+      console.log("⏳ [connect] Already connecting, skipping...");
+      return;
+    }
+
+    // Clear any pending reconnect
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = null;
+    }
+
     // Clean up any existing connection
     if (wsRef.current) {
       intentionalClose.current = true;
       wsRef.current.close();
+      wsRef.current = null;
     }
 
-    if (!serverUrl) return;
+    if (!url) {
+      console.log("⏳ [connect] No server URL, skipping...");
+      return;
+    }
 
+    console.log(`🔌 [connect] Connecting to ${url}...`);
     updateStatus("connecting");
     intentionalClose.current = false;
+    connectingRef.current = true;
 
-    const ws = new WebSocket(serverUrl);
+    const ws = new WebSocket(url);
 
     ws.onopen = () => {
       console.log("🔌 WebSocket connected to relay server");
+      connectingRef.current = false;
       updateStatus("connected");
       reconnectDelay.current = INITIAL_RECONNECT_DELAY; // Reset backoff
 
@@ -102,7 +128,7 @@ export function useRokuSocket({
         const msg = JSON.parse(event.data);
         if (msg.type === "error") {
           console.warn("⚠️ Relay error:", msg.message);
-          onError?.(msg.message);
+          onErrorRef.current?.(msg.message);
         } else if (msg.type === "config") {
           console.log("📺 Relay config:", msg);
         }
@@ -112,31 +138,35 @@ export function useRokuSocket({
     };
 
     ws.onclose = () => {
-      wsRef.current = null;
+      connectingRef.current = false;
+      // Only clear wsRef if this is still the active socket
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+      }
       updateStatus("disconnected");
 
       // Auto-reconnect unless we intentionally closed
       if (!intentionalClose.current) {
-        console.log(
-          `🔄 Reconnecting in ${reconnectDelay.current}ms...`
-        );
+        const delay = reconnectDelay.current;
+        console.log(`🔄 Reconnecting in ${delay}ms...`);
         reconnectTimer.current = setTimeout(() => {
           reconnectDelay.current = Math.min(
             reconnectDelay.current * RECONNECT_BACKOFF,
             MAX_RECONNECT_DELAY
           );
           connect();
-        }, reconnectDelay.current);
+        }, delay);
       }
     };
 
     ws.onerror = (err) => {
       console.error("WebSocket error:", err);
+      connectingRef.current = false;
       // onclose will fire after this, triggering reconnect
     };
 
     wsRef.current = ws;
-  }, [serverUrl, updateStatus, onError]);
+  }, [updateStatus]); // Only depends on updateStatus which is stable
 
   // ── Send a key to the Roku via relay ───────────────────────────────────
   const sendKey = useCallback((key: string, action: EcpAction) => {
@@ -152,7 +182,6 @@ export function useRokuSocket({
 
     const payload = JSON.stringify({ action, key });
     console.log(`📤 [sendKey] Sending: ${payload}`);
-    // Send as minimal JSON — no await, fire-and-forget for speed
     ws.send(payload);
   }, []);
 
@@ -171,20 +200,24 @@ export function useRokuSocket({
     connect();
   }, [connect]);
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────
+  // ── Connect when serverUrl changes ────────────────────────────────────
   useEffect(() => {
-    connect();
+    if (serverUrl) {
+      connect();
+    }
 
     return () => {
       intentionalClose.current = true;
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
       }
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
-  }, [connect]);
+  }, [serverUrl, connect]); // Only reconnect when the actual URL string changes
 
   return { status, sendKey, reconnect, setRokuIp: setRokuIpOnRelay };
 }

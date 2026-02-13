@@ -57,6 +57,9 @@ const wss = new WebSocketServer({ server });
 // Track the active Roku IP (can be set via env, REST, or WebSocket)
 let activeRokuIp = ROKU_IP;
 
+// Track active clients by IP — only allow 1 connection per client
+const clientsByIp = new Map(); // Map<string, WebSocket>
+
 // Valid ECP actions and keys
 const VALID_ACTIONS = new Set(["keydown", "keyup", "keypress"]);
 const VALID_KEYS = new Set([
@@ -114,6 +117,15 @@ function sendToRoku(action, key) {
 
 wss.on("connection", (ws, req) => {
   const clientIp = req.socket.remoteAddress;
+
+  // Close any existing connection from the same client IP (prevent connection spam)
+  const existingWs = clientsByIp.get(clientIp);
+  if (existingWs && existingWs.readyState <= 1) { // CONNECTING or OPEN
+    console.log(`🔄 Closing stale connection from ${clientIp}`);
+    existingWs.close();
+  }
+  clientsByIp.set(clientIp, ws);
+
   console.log(`🎮 Phone connected from ${clientIp}`);
   console.log(`   Active connections: ${wss.clients.size}`);
   console.log(`   Roku IP is currently: ${activeRokuIp || "(NOT SET)"}`);
@@ -174,6 +186,10 @@ wss.on("connection", (ws, req) => {
   });
 
   ws.on("close", () => {
+    // Only remove from map if this is still the active socket for this IP
+    if (clientsByIp.get(clientIp) === ws) {
+      clientsByIp.delete(clientIp);
+    }
     console.log(`👋 Controller disconnected (${wss.clients.size} remaining)`);
   });
 

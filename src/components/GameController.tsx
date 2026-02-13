@@ -79,15 +79,22 @@ export const GameController = () => {
   // Build the WebSocket URL from the auto-discovered relay address
   const wsUrl = relayUrl ? `ws://${relayUrl}` : '';
 
+  // Stable callbacks — won't trigger reconnects on re-render
+  const handleStatusChange = useCallback((s: string) => {
+    console.log(`[RELAY] Status: ${s}`);
+    if (s === "connected") setErrorMsg(null);
+  }, []);
+
+  const handleError = useCallback((msg: string) => {
+    setErrorMsg(msg);
+  }, []);
+
   // Connect to the relay server via WebSocket
   const { status, sendKey, reconnect, setRokuIp: setRokuIpOnRelay } = useRokuSocket({
     serverUrl: wsUrl,
     rokuIp,
-    onStatusChange: (s) => {
-      console.log(`[RELAY] Status: ${s}`);
-      if (s === "connected") setErrorMsg(null);
-    },
-    onError: (msg) => setErrorMsg(msg),
+    onStatusChange: handleStatusChange,
+    onError: handleError,
   });
 
   // Save settings to localStorage

@@ -23,23 +23,10 @@
             border-radius: 1rem;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }
-        h1 {
-            color: #333;
-            margin-bottom: 1rem;
-        }
-        .url {
-            color: #667eea;
-            font-weight: bold;
-            margin: 1rem 0;
-            font-size: 1.2rem;
-        }
-        p {
-            color: #666;
-            margin-bottom: 1.5rem;
-        }
-        #qrcode {
-            margin: 2rem auto;
-        }
+        h1 { color: #333; margin-bottom: 1rem; }
+        .url { color: #667eea; font-weight: bold; margin: 1rem 0; font-size: 1.2rem; }
+        p { color: #666; margin-bottom: 1.5rem; }
+        #qrcode { margin: 2rem auto; }
     </style>
 </head>
 <body>
@@ -50,15 +37,12 @@
         <p class="url">http://192.168.7.237:8081/</p>
         <p style="font-size: 0.9rem;">Make sure your phone is on the same WiFi network</p>
     </div>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
         new QRCode(document.getElementById("qrcode"), {
             text: "http://192.168.7.237:8081/",
-            width: 256,
-            height: 256,
-            colorDark: "#000000",
-            colorLight: "#ffffff",
+            width: 256, height: 256,
+            colorDark: "#000000", colorLight: "#ffffff",
             correctLevel: QRCode.CorrectLevel.H
         });
     </script>
