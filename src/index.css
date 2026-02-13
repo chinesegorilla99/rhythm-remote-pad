@@ -149,4 +149,24 @@
       inset 0 2px 30px hsl(0 0% 100% / 0.4);
     transform: scale(0.95);
   }
+
+  /* Setup page: success checkmark pop-in animation */
+  .setup-success-pop {
+    animation: successPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+}
+
+@keyframes successPop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
