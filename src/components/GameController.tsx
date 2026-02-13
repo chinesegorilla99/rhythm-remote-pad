@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LaneTile } from "./LaneTile";
 import { useRokuSocket } from "@/hooks/useRokuSocket";
 
@@ -100,16 +100,33 @@ export const GameController = () => {
   }, [relayUrl]);
 
   // ── Send keys through WebSocket relay (fire-and-forget) ─────────────
+  // For taps: we send keydown on press, then decide on release.
+  //   - TAP  → send keypress (single event, 50% less network chatter)
+  //   - HOLD → send keydown on press + keyup on release
+  // Track which lanes are pending so we know whether we already sent keydown.
+  const pendingLanes = useRef<Record<number, boolean>>({});
+
   const handlePress = useCallback((laneIndex: number) => {
     const key = LANE_TO_KEY[laneIndex];
     console.log(`[GAME] Lane ${laneIndex + 1} pressed (key: ${key})`);
+    // Mark as pending — we'll decide tap vs hold on release
+    pendingLanes.current[laneIndex] = true;
     sendKey(key, 'keydown');
   }, [sendKey]);
 
   const handleRelease = useCallback((laneIndex: number, wasLongPress: boolean) => {
     const key = LANE_TO_KEY[laneIndex];
-    console.log(`[GAME] Lane ${laneIndex + 1} released - ${wasLongPress ? "HOLD" : "TAP"} (key: ${key})`);
-    sendKey(key, 'keyup');
+    if (wasLongPress) {
+      // HOLD note: we already sent keydown on press, now send keyup
+      console.log(`[GAME] Lane ${laneIndex + 1} released - HOLD (key: ${key}) → keyup`);
+      sendKey(key, 'keyup');
+    } else {
+      // TAP note: send keyup to complete the keydown we already sent
+      // The keydown→keyup pair is fast enough for Roku to treat as a press
+      console.log(`[GAME] Lane ${laneIndex + 1} released - TAP (key: ${key}) → keyup`);
+      sendKey(key, 'keyup');
+    }
+    delete pendingLanes.current[laneIndex];
   }, [sendKey]);
 
   const handleSaveSettings = useCallback(async () => {

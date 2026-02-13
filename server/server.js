@@ -72,8 +72,12 @@ const VALID_KEYS = new Set([
 function sendToRoku(action, key) {
   return new Promise((resolve, reject) => {
     if (!activeRokuIp) {
+      console.error("❌ sendToRoku called but NO Roku IP is configured!");
       return reject(new Error("No Roku IP configured"));
     }
+
+    const ecpUrl = `http://${activeRokuIp}:8060/${action}/${key}`;
+    console.log(`📡 Forwarding to Roku: POST ${ecpUrl}`);
 
     const req = http.request(
       {
@@ -88,13 +92,20 @@ function sendToRoku(action, key) {
       },
       (res) => {
         res.resume(); // Drain the response
+        if (res.statusCode !== 200 && res.statusCode !== 202) {
+          console.warn(`⚠️  Roku responded with HTTP ${res.statusCode} for ${action}/${key}`);
+        }
         resolve(res.statusCode);
       }
     );
 
-    req.on("error", (err) => reject(err));
+    req.on("error", (err) => {
+      console.error(`❌ Roku HTTP error for ${ecpUrl}: ${err.message}`);
+      reject(err);
+    });
     req.on("timeout", () => {
       req.destroy();
+      console.error(`❌ Roku request timed out for ${ecpUrl}`);
       reject(new Error("Roku request timed out"));
     });
     req.end();
@@ -103,8 +114,9 @@ function sendToRoku(action, key) {
 
 wss.on("connection", (ws, req) => {
   const clientIp = req.socket.remoteAddress;
-  console.log(`🎮 Controller connected from ${clientIp}`);
+  console.log(`🎮 Phone connected from ${clientIp}`);
   console.log(`   Active connections: ${wss.clients.size}`);
+  console.log(`   Roku IP is currently: ${activeRokuIp || "(NOT SET)"}`);
 
   // Send current config to the client
   ws.send(JSON.stringify({
@@ -114,11 +126,14 @@ wss.on("connection", (ws, req) => {
   }));
 
   ws.on("message", async (raw) => {
+    const rawStr = raw.toString();
+    console.log(`📨 WS message received: ${rawStr}`);
+
     let msg;
     try {
-      msg = JSON.parse(raw.toString());
+      msg = JSON.parse(rawStr);
     } catch {
-      console.warn("⚠️  Invalid JSON received:", raw.toString());
+      console.warn("⚠️  Invalid JSON received:", rawStr);
       return;
     }
 
@@ -134,13 +149,15 @@ wss.on("connection", (ws, req) => {
     const { action, key } = msg;
 
     if (!VALID_ACTIONS.has(action)) {
-      console.warn(`⚠️  Invalid action: ${action}`);
+      console.warn(`⚠️  Invalid action: "${action}" (valid: ${[...VALID_ACTIONS].join(", ")})`);
       return;
     }
     if (!VALID_KEYS.has(key)) {
-      console.warn(`⚠️  Invalid key: ${key}`);
+      console.warn(`⚠️  Invalid key: "${key}" (valid: ${[...VALID_KEYS].join(", ")})`);
       return;
     }
+
+    console.log(`🎯 Forwarding to Roku: ${action}/${key} → ${activeRokuIp || "(NO IP!)"}`);
 
     try {
       const start = Date.now();

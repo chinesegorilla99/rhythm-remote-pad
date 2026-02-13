@@ -141,13 +141,19 @@ export function useRokuSocket({
   // ── Send a key to the Roku via relay ───────────────────────────────────
   const sendKey = useCallback((key: string, action: EcpAction) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      console.warn("⚠️ WebSocket not connected, dropping:", action, key);
+    if (!ws) {
+      console.warn("⚠️ [sendKey] WebSocket ref is null — not connected");
+      return;
+    }
+    if (ws.readyState !== WebSocket.OPEN) {
+      console.warn(`⚠️ [sendKey] WebSocket not OPEN (readyState=${ws.readyState}), dropping: ${action} ${key}`);
       return;
     }
 
+    const payload = JSON.stringify({ action, key });
+    console.log(`📤 [sendKey] Sending: ${payload}`);
     // Send as minimal JSON — no await, fire-and-forget for speed
-    ws.send(JSON.stringify({ action, key }));
+    ws.send(payload);
   }, []);
 
   // ── Update Roku IP on the relay ────────────────────────────────────────
