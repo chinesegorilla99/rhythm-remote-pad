@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LaneTile } from "./LaneTile";
+import { useRokuSocket } from "@/hooks/useRokuSocket";
 
 // Lane to Roku remote key mapping
 const LANE_TO_KEY: Record<number, string> = {
@@ -13,92 +14,85 @@ export const GameController = () => {
   const [rokuIp, setRokuIp] = useState<string>(() => {
     return localStorage.getItem('rokuIp') || '';
   });
-  const [isConnected, setIsConnected] = useState(false);
+  const [relayUrl, setRelayUrl] = useState<string>(() => {
+    return localStorage.getItem('relayUrl') || '';
+  });
   const [showSettings, setShowSettings] = useState(false);
   const [inputIp, setInputIp] = useState(rokuIp);
-  
-  // Track pending requests to avoid overwhelming the Roku
-  const pendingRequests = useRef<Set<string>>(new Set());
+  const [inputRelay, setInputRelay] = useState(relayUrl);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Save Roku IP to localStorage when it changes
+  // Build the WebSocket URL from the relay server address
+  const wsUrl = relayUrl ? `ws://${relayUrl}` : '';
+
+  // Connect to the relay server via WebSocket
+  const { status, sendKey, reconnect, setRokuIp: setRokuIpOnRelay } = useRokuSocket({
+    serverUrl: wsUrl,
+    rokuIp,
+    onStatusChange: (s) => {
+      console.log(`[RELAY] Status: ${s}`);
+      if (s === "connected") setErrorMsg(null);
+    },
+    onError: (msg) => setErrorMsg(msg),
+  });
+
+  // Save settings to localStorage
   useEffect(() => {
-    if (rokuIp) {
-      localStorage.setItem('rokuIp', rokuIp);
-    }
+    if (rokuIp) localStorage.setItem('rokuIp', rokuIp);
   }, [rokuIp]);
 
-  // Test connection to Roku
-  const testConnection = useCallback(async (ip: string): Promise<boolean> => {
-    try {
-      // Try to query Roku device info
-      const response = await fetch(`http://${ip}:8060/query/device-info`, {
-        method: 'GET',
-        mode: 'no-cors', // Roku doesn't support CORS, so we use no-cors
-      });
-      // With no-cors, we can't read the response, but if it doesn't throw, it likely worked
-      return true;
-    } catch (error) {
-      console.error('Connection test failed:', error);
-      return false;
-    }
-  }, []);
+  useEffect(() => {
+    if (relayUrl) localStorage.setItem('relayUrl', relayUrl);
+  }, [relayUrl]);
 
-  // Send key press/release to Roku via ECP (External Control Protocol)
-  const sendKeyToRoku = useCallback(async (key: string, action: 'keydown' | 'keyup' | 'keypress') => {
-    if (!rokuIp) {
-      console.warn('No Roku IP configured');
-      return;
-    }
-
-    const requestId = `${key}-${action}-${Date.now()}`;
-    if (pendingRequests.current.has(`${key}-${action}`)) {
-      return; // Skip if same key/action is already pending
-    }
-
-    const url = `http://${rokuIp}:8060/${action}/${key}`;
-    
-    try {
-      pendingRequests.current.add(`${key}-${action}`);
-      await fetch(url, { 
-        method: 'POST',
-        mode: 'no-cors' // Roku ECP doesn't support CORS
-      });
-      console.log(`✅ Sent ${action}/${key} to Roku`);
-    } catch (error) {
-      console.error(`❌ Error sending ${action}/${key}:`, error);
-    } finally {
-      pendingRequests.current.delete(`${key}-${action}`);
-    }
-  }, [rokuIp]);
-
+  // ── Send keys through WebSocket relay (fire-and-forget) ─────────────
   const handlePress = useCallback((laneIndex: number) => {
     const key = LANE_TO_KEY[laneIndex];
     console.log(`[GAME] Lane ${laneIndex + 1} pressed (key: ${key})`);
-    sendKeyToRoku(key, 'keydown');
-  }, [sendKeyToRoku]);
+    sendKey(key, 'keydown');
+  }, [sendKey]);
 
   const handleRelease = useCallback((laneIndex: number, wasLongPress: boolean) => {
     const key = LANE_TO_KEY[laneIndex];
     console.log(`[GAME] Lane ${laneIndex + 1} released - ${wasLongPress ? "HOLD" : "TAP"} (key: ${key})`);
-    sendKeyToRoku(key, 'keyup');
-  }, [sendKeyToRoku]);
+    sendKey(key, 'keyup');
+  }, [sendKey]);
 
-  const handleSaveIp = useCallback(() => {
+  const handleSaveSettings = useCallback(() => {
     setRokuIp(inputIp);
+    setRelayUrl(inputRelay);
+    setRokuIpOnRelay(inputIp);
     setShowSettings(false);
-    setIsConnected(true); // Assume connected after saving
-  }, [inputIp]);
+    if (status !== "connected") reconnect();
+  }, [inputIp, inputRelay, setRokuIpOnRelay, status, reconnect]);
 
-  // Show settings if no Roku IP is configured
-  if (!rokuIp || showSettings) {
+  // Show settings if not configured
+  if (!rokuIp || !relayUrl || showSettings) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background p-4">
         <div className="bg-card p-6 rounded-lg shadow-lg max-w-md w-full">
           <h2 className="text-xl font-bold mb-4 text-foreground">🎮 Roku Setup</h2>
           <p className="text-muted-foreground mb-4">
-            Enter your Roku device's IP address to connect the controller.
+            Enter your Roku IP and relay server address to connect.
           </p>
-          <p className="text-sm text-muted-foreground mb-4">
+
+          {/* Relay Server Address */}
+          <label className="block text-sm font-medium text-muted-foreground mb-1">
+            Relay Server (your computer's IP:3002)
+          </label>
+          <input
+            type="text"
+            value={inputRelay}
+            onChange={(e) => setInputRelay(e.target.value)}
+            placeholder="192.168.1.50:3002"
+            className="w-full p-3 border rounded-lg mb-4 bg-background text-foreground"
+          />
+
+          {/* Roku IP */}
+          <label className="block text-sm font-medium text-muted-foreground mb-1">
+            Roku IP Address
+          </label>
+          <p className="text-xs text-muted-foreground mb-2">
             Find it on your Roku: Settings → Network → About
           </p>
           <input
@@ -108,14 +102,15 @@ export const GameController = () => {
             placeholder="192.168.1.100"
             className="w-full p-3 border rounded-lg mb-4 bg-background text-foreground"
           />
+
           <div className="flex gap-2">
             <button
-              onClick={handleSaveIp}
+              onClick={handleSaveSettings}
               className="flex-1 bg-primary text-primary-foreground py-3 px-4 rounded-lg font-semibold"
             >
               Connect
             </button>
-            {rokuIp && (
+            {rokuIp && relayUrl && (
               <button
                 onClick={() => setShowSettings(false)}
                 className="bg-secondary text-secondary-foreground py-3 px-4 rounded-lg"
@@ -152,9 +147,25 @@ export const GameController = () => {
       </button>
 
       {/* Connection status */}
-      <div className="absolute top-2 left-2 z-20 text-xs text-muted-foreground font-mono">
+      <div className="absolute top-2 left-2 z-20 flex items-center gap-2 text-xs text-muted-foreground font-mono">
+        <span
+          className={`inline-block w-2 h-2 rounded-full ${
+            status === "connected"
+              ? "bg-green-500"
+              : status === "connecting"
+              ? "bg-yellow-500 animate-pulse"
+              : "bg-red-500"
+          }`}
+        />
         📺 {rokuIp}
       </div>
+
+      {/* Error banner */}
+      {errorMsg && (
+        <div className="absolute top-10 left-2 right-2 z-20 bg-red-500/20 border border-red-500/50 text-red-300 text-xs p-2 rounded font-mono">
+          {errorMsg}
+        </div>
+      )}
       
       {/* Main controller container */}
       <div className="relative z-10 w-full h-full max-w-[100vw] max-h-[100vh] flex gap-2 sm:gap-4">
